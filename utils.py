@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import gensim
 from gensim.models import Word2Vec
+import pickle
 import warnings
  
 warnings.filterwarnings(action = 'ignore')
@@ -69,12 +70,13 @@ res = preprocess(in_data)
 res.to_csv("data/clean_last_update_small.csv", index=False)
 
 # Generate embeddings
-generate__store_embeddings(res, ["name_clean", "description_clean"], "embeddings/word2vec.model")
+generate__store_embeddings(res, ["name_clean"], "embeddings/word2vec.model")
 
 # Embedd book names
-# model = Word2Vec.load("embeddings/word2vec.model")
+model = Word2Vec.load("embeddings/word2vec.model")
 # res["name_emb"] = avg_book_embedings(model, res, "name_clean")
-# in_data["desc_emb"] = avg_book_embedings(model, in_data, "description")
+emb = avg_book_embedings(model, res, "name_clean")
 
-# TODO add price
-# res.to_csv("data/clean_last_update_small.csv", index=False, columns=["name", "name_emb", ])
+emb_dict = {res["name"].iloc[i].lower(): emb[i] for i in range(len(emb))}
+with open('embeddings/w2v_avg_vectors.p', 'wb') as fp:
+    pickle.dump(emb_dict, fp, protocol=pickle.HIGHEST_PROTOCOL)

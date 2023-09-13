@@ -36,8 +36,14 @@ class BookSearchScraper():
         self.use_embeddings = use_embeddings
 
     def collect_search_data(self, query: str, extended_info: bool = False, search_all_pages: bool = False):
+        # Preprocess query
+        query = self.matcher.preprocess_query(query, not self.use_embeddings)
+        if self.use_embeddings:
+            query = self.matcher.get_embedding_vector(query)
+
+        # Check if cached
         if len(self.data_cache) > 0 and time.time() - self.cache_ts < self.cache_update_ts:
-            final_res = [[m] + book for book in self.data_cache if (m := self.matcher.get_matches(query, book[0]))]
+            final_res = [[m] + book for book in self.data_cache if (m := self.matcher.get_matches(query, book[0], not self.use_embeddings))]
 
         else:
             # Get main URL
@@ -45,11 +51,10 @@ class BookSearchScraper():
 
             # Get categories and get books for each in parallel
             categories = self._get_all_category_links(soup_main)
-
             combined_res = Parallel(n_jobs=len(categories))\
                 (delayed(self._search_in_category)\
                 (link, query, extended_info, search_all_pages) for link in categories.values())
-
+            
             # Merge results
             final_res, self.data_cache = [], []
             for vals in combined_res:
@@ -57,6 +62,11 @@ class BookSearchScraper():
                 self.data_cache.extend(vals[2])
 
             self.cache_ts=time.time()
+        
+        # Get 10 best
+        if len(final_res) > 10:
+            final_res = sorted(final_res, key=lambda x: x[0][0], reverse=True)[0:10]
+
         return final_res
 
     def _search_in_category(self, link: str, query: str, extended_info: bool = False, search_all_pages: bool = False):
@@ -97,14 +107,11 @@ class BookSearchScraper():
         for book_class in soup.findAll('article', attrs={"class": "product_pod"}):
             _, new_book = self._get_book_info_from_page(book_class, extended_info)
             cache.append(new_book)
-
-            # FIXME add emb
-            match_res = self.matcher.get_matches_emb(search_query, new_book[0]) if self.use_embeddings \
-                else self.matcher.get_matches(search_query, new_book[0])
+            match_res = self.matcher.get_matches(search_query, new_book[0], not self.use_embeddings)
             if match_res:
                 result.append(new_book)
                 matches.append(match_res)
-    
+        
         # Get data recursively from next pages
         if search_all_pages:
             next_page = self._next_page_url(soup)
@@ -157,9 +164,8 @@ def print_matching_result(query: str, matches: list):
 
 
 book_scraper = BookSearchScraper(cache_update_ts=3, use_embeddings=True)
-for i in ["alice in wonderland", "sharp"]:
+for i in ["alice in wonderland", "sharp", "ok", "the", "here", "shades"]:
     t1 = time.time()
     res_books = book_scraper.collect_search_data(i, search_all_pages=True, extended_info=False)
     print_matching_result(i, res_books)
-    print(f"Get main and category urls {time.time()-t1}")
 

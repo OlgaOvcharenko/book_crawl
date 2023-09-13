@@ -1,3 +1,4 @@
+import pickle
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
@@ -9,6 +10,9 @@ import numpy as np
 from numpy import dot
 from numpy.linalg import norm
 from gensim.models import Word2Vec
+import warnings
+
+warnings.filterwarnings(action = 'ignore')
 
 
 class Matcher():
@@ -22,8 +26,10 @@ class Matcher():
         return model
     
     @staticmethod
-    def get_data_embeddings(path_in: str = "data/clean_last_update_small.csv"):
-        return pd.read_csv(path_in)
+    def get_data_embeddings(path_in: str = "embeddings/w2v_avg_vectors.p"):
+        with open(path_in, 'rb') as fp:
+            data = pickle.load(fp)
+        return data
     
     @staticmethod
     def jaccard_distance(set1:set, set2:set):
@@ -43,30 +49,25 @@ class Matcher():
         if only_lower:
             return query.lower()
          
-        stop_words = set(stopwords.words('english')) 
+        # stop_words = set(stopwords.words('english')) 
         lemmatizer = WordNetLemmatizer()
         stemmer = PorterStemmer()
-
-        words = []    
         tokens = word_tokenize(query)
-        for word in tokens:
-            # not word in stop_words
-            if word.isalpha() or len(tokens) < 2:
-                words.append(stemmer.stem(lemmatizer.lemmatize(word)))
-        return words
+        return [stemmer.stem(lemmatizer.lemmatize(word)) for word in tokens if word.isalpha() or len(tokens) < 2]
     
     def get_embedding_vector(self, query):
-        vec = []
-        for word in query:
-            vec.append(self.emb_model.wv[word])
-        return np.mean(vec, axis=0)
+        try:
+            return np.mean([self.emb_model.wv[word] for word in query], axis=0)
+        except KeyError as e:
+            print("Words id not in w2v traning corpus.")
+        return np.zeros((100, ))
         
-    def get_matches_emb(self, query: str, candidate: list) -> bool|list:
-        a = self.get_embedding_vector(self.preprocess_query(query, False))
-        b = self.get_embedding_vector(self.preprocess_query(candidate, False))
-        sim = self.cosine_similarity(a, b)
-        return [sim] if sim > 0.8 or sim < -0.8 else False
-  
-    def get_matches(self, query, candidate) -> bool|list:
-        return [q for q in query.split(" ")if q in candidate] if query in candidate else False
+    def get_matches(self, query_clean, candidate, use_simple_matching) -> bool|list:
+        if use_simple_matching:
+            candidate_clean = self.preprocess_query(candidate, use_simple_matching)
+            return [q for q in query_clean.split(" ") if q in candidate_clean] if query_clean in candidate_clean else False
+        else:
+            candidate_clean = r if len(r := self.data_embeddings.get(candidate)) > 0 else self.get_embedding_vector(self.preprocess_query(candidate, False))
+            sim = self.cosine_similarity(query_clean, candidate_clean)
+            return [sim] if sim > 0.65 or sim < -0.65 else False
     
