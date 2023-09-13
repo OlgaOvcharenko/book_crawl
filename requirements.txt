@@ -4,3 +4,5 @@ numpy
 html5lib
 lxml
 requests
+nltk
+gensim
