@@ -45,11 +45,7 @@ class Matcher():
     def euclidian_dist(a, b):
         return np.linalg.norm(a - b)
     
-    def preprocess_query(self, query: str, only_lower: bool): 
-        if only_lower:
-            return query.lower()
-         
-        # stop_words = set(stopwords.words('english')) 
+    def preprocess_query(self, query: str): 
         lemmatizer = WordNetLemmatizer()
         stemmer = PorterStemmer()
         tokens = word_tokenize(query)
@@ -59,15 +55,17 @@ class Matcher():
         try:
             return np.mean([self.emb_model.wv[word] for word in query], axis=0)
         except KeyError as e:
-            print("Words id not in w2v traning corpus.")
-        return np.zeros((100, ))
+            # print("Words are not in w2v traning corpus:" + str(query))
+            return np.zeros((100, ))
         
     def get_matches(self, query_clean, candidate, use_simple_matching) -> bool|list:
         if use_simple_matching:
-            candidate_clean = self.preprocess_query(candidate, use_simple_matching)
-            return [q for q in query_clean.split(" ") if q in candidate_clean] if query_clean in candidate_clean else False
+            candidate_clean = self.preprocess_query(candidate)
+            return [q for q in query_clean if q in candidate_clean] \
+                if " ".join(query_clean) in candidate_clean else False
+
         else:
-            candidate_clean = r if len(r := self.data_embeddings.get(candidate)) > 0 else self.get_embedding_vector(self.preprocess_query(candidate, False))
+            candidate_clean = r if (r := self.data_embeddings.get(candidate)).size > 0 else self.get_embedding_vector(self.preprocess_query(candidate))
             sim = self.cosine_similarity(query_clean, candidate_clean)
             return [sim] if sim > 0.65 or sim < -0.65 else False
     
